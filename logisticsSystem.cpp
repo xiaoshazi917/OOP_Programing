@@ -463,7 +463,7 @@ int main () {
 
                         break;
                     }
-                    default: {
+                    default: { // 这里输入错误的格式（例如n）会导致cin被设置failbit，且没有被清除，后续可以考虑进行更改。
                         ifBreak = true;
                         break;
                     }
