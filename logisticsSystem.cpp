@@ -6,6 +6,7 @@
 #include <utility>
 #include <limits>
 #include <sstream>
+#include <memory>
 
 using namespace std;
 
@@ -34,28 +35,32 @@ private:
         }
     }
 
-public:
+protected:
 
     Package (string NO, string Sender, string Receiver, double Weight
-        , const unordered_map<string, size_t>& noTable, Status status = Status::AWAITING)
-        : status(status), No(move(NO)), sender(move(Sender)), receiver(move(Receiver)), weight(move(Weight))
-    {
-        if (No.empty()) {
-            throw invalid_argument("The package number can not be blank");
-        } else if (noTable.count(No) > 0) {
-            throw invalid_argument("The package number already exists");
-        }
+            , const unordered_map<string, size_t>& noTable, Status status = Status::AWAITING)
+            : status(status), No(move(NO)), sender(move(Sender)), receiver(move(Receiver)), weight(move(Weight))
+        {
+            if (No.empty()) {
+                throw invalid_argument("The package number can not be blank");
+            } else if (noTable.count(No) > 0) {
+                throw invalid_argument("The package number already exists");
+            }
         
-        if (weight <= 0) {
-            throw invalid_argument("The weight of the package must be greater than zero");
-        }
-        if (sender.empty()) {
-            throw invalid_argument("Sender can not be empty");
-        }
-        if (receiver.empty()) {
-            throw invalid_argument("Receiver can not be empty");
-        }
-    };    
+            if (weight <= 0) {
+                throw invalid_argument("The weight of the package must be greater than zero");
+            }
+            if (sender.empty()) {
+                throw invalid_argument("Sender can not be empty");
+            }
+            if (receiver.empty()) {
+                throw invalid_argument("Receiver can not be empty");
+            }
+        }; 
+
+public:  
+
+    virtual ~Package() = default;
 
     // Lab02作业新增：状态输出更改：Lab01部分仅试图输出枚举的变量名，实际只会输出0
     // 返回当前状态字段。
@@ -87,6 +92,56 @@ public:
 
         return res;
     }
+
+    virtual string handle () const = 0; // 处置方法的虚函数，返回对特殊包裹的处理方式。
+
+    virtual string PackTag () const = 0; // 包裹类型
+};
+
+class Fragile_Package : public Package {
+private:
+
+public:
+    Fragile_Package (string NO, string Sender, string Receiver, double Weight, 
+    const unordered_map<string, size_t>& noTable) : Package(move(NO), move(Sender), move(Receiver), Weight, noTable) {}
+
+    string PackTag () const override {
+        return "Fragile";
+    }
+
+    string handle () const override {
+        return "Fragile label";
+    }
+};
+
+class Normal_Package : public Package{
+private:
+
+public:
+    Normal_Package (string NO, string Sender, string Receiver, double Weight, 
+    const unordered_map<string, size_t>& noTable) : Package(move(NO), move(Sender), move(Receiver), Weight, noTable) {}
+
+    string PackTag () const override {
+        return "Normal";
+    }
+
+    string handle () const override {
+        return "";
+    }
+};
+
+class Fresh_Package : public Package {
+public:
+    Fresh_Package (string NO, string Sender, string Receiver, double Weight, 
+    const unordered_map<string, size_t>& noTable) : Package(move(NO), move(Sender), move(Receiver), Weight, noTable) {}
+
+    string PackTag () const override {
+        return "Fresh";
+    }
+
+    string handle () const override {
+        return "Refrigerated storage";
+    }
 };
 
 class PackageManaging {
@@ -94,12 +149,18 @@ private:
     inline static unordered_map<string, size_t> NoTable; // 编号的哈希表，用于创建包裹时的编号查重以及查询包裹时返回包裹数据。
     friend class PackageStation;
 public:
-    inline static vector<Package> packages;
+    inline static vector<unique_ptr<Package>> packages;
 
     // 添加一个新对象。
-    void add (string NO, string Sender, string Receiver, double weight) {
+    void add (string NO, string Sender, string Receiver, double weight, string PackTag) {
         try {
-            packages.emplace_back(NO, Sender, Receiver, weight, NoTable);
+            if (PackTag == "Fresh") {
+                packages.push_back(make_unique<Fresh_Package>(NO, Sender, Receiver, weight, PackageManaging::NoTable));
+            } else if (PackTag == "Fragile") {
+                packages.push_back(make_unique<Fragile_Package>(NO, Sender, Receiver, weight, PackageManaging::NoTable));
+            } else {
+                packages.push_back(make_unique<Normal_Package>(NO, Sender, Receiver, weight, PackageManaging::NoTable));
+            }
         } catch (const invalid_argument& err) {
             cout << err.what() << endl;
             return;
@@ -113,7 +174,9 @@ public:
             << "Package Sender: " << Sender << "\t"
             << "Package Receiver: " << Receiver << "\t"
             << "Package Weight: " << weight << "\t"
-            << "Package Status: " << packages[NoTable[NO]].statusOutput();
+            << "Package Status: " << packages[NoTable[NO]]->statusOutput() << "\t"
+            << "Package Type: " << packages[NoTable[NO]]->PackTag() << "\t"
+            << packages[NoTable[NO]]->handle() << endl;
         } catch (const runtime_error& err) { // 状态错误的输出，在目前的架构中无用，考虑删除
             cout << err.what() << endl; 
         }
@@ -127,11 +190,14 @@ public:
         }
 
         try {
-            cout << "Package Number: " << packages[NoTable[no]].No << "\t"
-                << "Package Sender: " << packages[NoTable[no]].sender << "\t"
-                << "Package Receiver: " << packages[NoTable[no]].receiver << "\t"
-                << "Package Weight: " << packages[NoTable[no]].weight << "\t"
-                << "Package Status: " << packages[NoTable[no]].statusOutput() << endl;
+            cout << "Package Number: " << packages[NoTable[no]]->No << "\t"
+                << "Package Sender: " << packages[NoTable[no]]->sender << "\t"
+                << "Package Receiver: " << packages[NoTable[no]]->receiver << "\t"
+                << "Package Weight: " << packages[NoTable[no]]->weight << "\t"
+                << "Package Status: " << packages[NoTable[no]]->statusOutput() << "\t"
+                << "Package Type: " << packages[NoTable[no]]->PackTag() << "\t"
+                << packages[NoTable[no]]->handle() << endl;
+
         } catch (const runtime_error& err) { // 状态错误的输出，在目前的架构中无用，考虑删除
             cout << err.what() << endl;
         }
@@ -142,16 +208,65 @@ public:
         if (packages.empty()) {
             cout << "No packages" << endl;
         }
-        for (auto pack : packages) {
+        for (auto& pack : packages) {
             try {
-                cout << "Package Number: " << pack.No << "\t"
-                << "Package Sender: " << pack.sender << "\t"
-                << "Package Receiver: " << pack.receiver << "\t"
-                << "Package Weight: " << pack.weight << "\t"
-                << "Package Status: " << pack.statusOutput() << endl;
+                cout << "Package Number: " << pack->No << "\t"
+                << "Package Sender: " << pack->sender << "\t"
+                << "Package Receiver: " << pack->receiver << "\t"
+                << "Package Weight: " << pack->weight << "\t"
+                << "Package Status: " << pack->statusOutput() << "\t"
+                << "Package Type: " << pack->PackTag() << "\t"
+                << pack->handle() << endl;
             } catch (const runtime_error& err) {
                 cout << err.what() << endl;
             }
+        }
+    }
+
+    // 展示含有特定标签的所有包裹
+    void showAll (string tag) {
+        bool founded = false;
+
+        // normal属于default选项，因此不能直接匹配
+        if (tag == "Fragile" || tag == "Fresh") {
+            for (auto& pack : packages) {
+                if (pack->PackTag() == tag) {
+                    founded = true;
+                    try {
+                        cout << "Package Number: " << pack->No << "\t"
+                        << "Package Sender: " << pack->sender << "\t"
+                        << "Package Receiver: " << pack->receiver << "\t"
+                        << "Package Weight: " << pack->weight << "\t"
+                        << "Package Status: " << pack->statusOutput() << "\t"
+                        << "Package Type: " << pack->PackTag() << "\t"
+                        << pack->handle() << endl;
+                    } catch (const runtime_error& err) {
+                        cout << err.what() << endl;
+                    }
+                }
+            }
+
+            if (!founded) cout << "No Packages with this tag" << endl;
+            return;
+        } else {
+            for (auto& pack : packages) {
+                if (pack->PackTag() == "Normal") {
+                    founded = true;
+                    try {
+                        cout << "Package Number: " << pack->No << "\t"
+                        << "Package Sender: " << pack->sender << "\t"
+                        << "Package Receiver: " << pack->receiver << "\t"
+                        << "Package Weight: " << pack->weight << "\t"
+                        << "Package Status: " << pack->statusOutput() << "\t"
+                        << "Package Type: " << pack->PackTag() << "\t"
+                        << pack->handle() << endl;
+                    } catch (const runtime_error& err) {
+                        cout << err.what() << endl;
+                    }
+                }
+            }
+            if (!founded) cout << "No Packages with this tag" << endl;
+            return;
         }
     }
 
@@ -163,8 +278,8 @@ public:
             return;
         }
 
-        if (packages[NoTable[No]].advanceStatus()) {
-            cout << "Status updated, current status: " << packages[NoTable[No]].statusOutput() << endl;
+        if (packages[NoTable[No]]->advanceStatus()) {
+            cout << "Status updated, current status: " << packages[NoTable[No]]->statusOutput() << endl;
         } else {
             cout << "Invalid operation: The package has been signed." << endl;
         }
@@ -179,7 +294,7 @@ public:
         }
 
         int res;
-        res = static_cast<int>(5 + 2 * packages[NoTable[No]].weight);
+        res = static_cast<int>(5 + 2 * packages[NoTable[No]]->weight);
         return res;
     }
 };
@@ -188,11 +303,11 @@ class PackageStation {
 private:
     string No; // 站点编号
     string Name; //站点名称
-    vector<Package> packs; //vector中会在随机位置插入和删除元素，因此无法继承PackageManaging中的哈希表索引
+    vector<Package*> packs; //vector中会在随机位置插入和删除元素，因此无法继承PackageManaging中的哈希表索引
                             //目前的查找采用遍历方式，后期可以考虑改为隐式Treap
     PackageManaging management;
 public:
-    PackageStation (string no, string name, PackageManaging manage, vector<Package> Pack = {})
+    PackageStation (string no, string name, PackageManaging manage, vector<Package*> Pack = {})
         : No(no), Name(name), packs(Pack), management(manage) { // 构造函数默认包裹列表为空, 这里可以考虑是否开放拷贝包裹列表的接口：如果开放，需要逐个判断包裹状态；不开放则添加包裹会较麻烦。 目前在主函数中不开放接口
         if (no.empty()) {
             throw invalid_argument("Station Number can not be empty");
@@ -206,12 +321,12 @@ public:
         if (PackageManaging::NoTable.find(no) == PackageManaging::NoTable.end() ) {
             throw runtime_error("Can not find this package");
             return;
-        } else if (PackageManaging::packages[PackageManaging::NoTable[no]].statusOutput() != "AWAITING") {
+        } else if (PackageManaging::packages[PackageManaging::NoTable[no]]->statusOutput() != "AWAITING") {
             throw runtime_error("This Package is invalid to get into station"); // 当包裹状态不是待入站时，拒绝入站并抛出报错信息
         }
         // 入站的包裹必定是AWAITING的，因此不用考虑重复入站的问题
-        management.advanceStatus(PackageManaging::packages[PackageManaging::NoTable[no]].No); // 推进包裹状态
-        packs.push_back(PackageManaging::packages[PackageManaging::NoTable[no]]); // 加入站点的包裹vector
+        management.advanceStatus(PackageManaging::packages[PackageManaging::NoTable[no]]->No); // 推进包裹状态
+        packs.push_back(PackageManaging::packages[PackageManaging::NoTable[no]].get()); // 加入站点的包裹vector
         cout << "Package inbounded successfully" << endl;
         cout << "Package info: \t";
         management.find(no);
@@ -236,7 +351,7 @@ public:
         bool founded = false;
         int index = 0;
         for ( ; index < packs.size(); index++) {
-            if (packs[index].No == no) {
+            if (packs[index]->No == no) {
                 founded = true;
                 break;
             }
@@ -246,7 +361,7 @@ public:
         }
 
         
-        management.advanceStatus(PackageManaging::packages[PackageManaging::NoTable[no]].No); //推进状态
+        management.advanceStatus(PackageManaging::packages[PackageManaging::NoTable[no]]->No); //推进状态
         packs.erase(packs.begin() + index); //出站
         cout << "Package outbound successfully" << endl;
     }
@@ -263,9 +378,10 @@ int main () {
         cout << "Press 1 to create a new package" << endl;
         cout << "Press 2 to search for a certain package" << endl;
         cout << "Press 3 to show all the packages" << endl;
-        cout << "Press 4 to advance the package status" << endl;
-        cout << "Press 5 to query the price" << endl;
-        cout << "Press 6 to do with stations" << endl;
+        cout << "Press 4 to show all packages with certain tag" << endl;
+        cout << "Press 5 to advance the package status" << endl;
+        cout << "Press 6 to query the price" << endl;
+        cout << "Press 7 to do with stations" << endl;
 
         int s = 0;
         cin >> s;
@@ -284,14 +400,18 @@ int main () {
             if (!getline(cin, weightInput)) break;
 
             istringstream weightStream(weightInput);
-            double weight;
-            string extra;
-            if (!(weightStream >> weight) || (weightStream >> extra)) {
+            double weight; // 删去清除缓冲区的操作
+            if (!(weightStream >> weight)) {
                 cout << "Invalid weight: enter one numeric value." << endl;
                 continue;
             }
 
-            management.add(NO, Sender, Receiver, weight);
+            cout << "Enter tag of the Package" << endl;
+            cout << "Fresh for fresh parcel; Fragile for fragile parcel. Enter something else for normal parcel" << endl;
+            string tag;
+            if (!getline(cin, tag)) break;
+
+            management.add(NO, Sender, Receiver, weight, tag);
         } else if (s == 2) {
             cout << "Package Number: ";
             string NO;
@@ -300,11 +420,19 @@ int main () {
         } else if (s == 3) {
             management.showAll();
         } else if (s == 4) {
+            cout << "Enter tag of the Package";
+            cout << "Fresh for fresh parcel; Fragile for fragile parcel. Enter something else for normal parcel" << endl;
+            string tag;
+            cin >> tag;
+
+            management.showAll(tag);
+
+        } else if (s == 5) {
             cout << "Package Number: ";
             string No;
             cin >> No;
             management.advanceStatus(No);
-        } else if (s == 5) {
+        } else if (s == 6) {
             cout << "Package Number: ";
             string No;
             cin >> No;
@@ -313,7 +441,7 @@ int main () {
             } catch (const runtime_error& err) {
                 cout << err.what() << endl;
             }
-        } else if (s == 6) {
+        } else if (s == 7) {
             while (1) {
                 cout << "Press 1 to create a new station" << endl;
                 cout << "Press 2 to inbound a package" << endl;
